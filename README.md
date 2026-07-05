@@ -17,3 +17,4 @@ On push to `main`:
 Manual `workflow_dispatch`: pick `staging` or `prod` + an image tag (usually a
 `sha-<short>` that already passed dev). Bumps that overlay the same way.
 Prod's ArgoCD Application has `prune: false`, so promotion is deliberate.
+# CI smoke test 2026-07-05T00:48:03Z
