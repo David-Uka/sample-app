@@ -1,0 +1,47 @@
+name: Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - staging
+          - prod
+      image_tag:
+        description: "Image tag to promote, e.g. sha-abc1234"
+        required: true
+        type: string
+
+jobs:
+  bump-overlay:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Checkout gitops-manifests
+        uses: actions/checkout@v4
+        with:
+          repository: David-Uka/gitops-manifests
+          token: ${{ secrets.GITOPS_PAT }}
+          path: gitops-manifests
+
+      - name: Set up kustomize
+        run: |
+          curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Bump image tag
+        working-directory: gitops-manifests/apps/sample-app/overlays/${{ inputs.environment }}
+        run: |
+          kustomize edit set image ghcr.io/david-uka/sample-app=ghcr.io/david-uka/sample-app:${{ inputs.image_tag }}
+
+      - name: Commit and push
+        working-directory: gitops-manifests
+        run: |
+          git config user.name "sample-app-ci"
+          git config user.email "ci@sample-app"
+          git add apps/sample-app/overlays/${{ inputs.environment }}/kustomization.yaml
+          git commit -m "deploy(${{ inputs.environment }}): sample-app ${{ inputs.image_tag }}"
+          git push
