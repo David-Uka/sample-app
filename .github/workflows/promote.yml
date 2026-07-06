@@ -16,7 +16,31 @@ on:
         type: string
 
 jobs:
+  verify-signature:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Verify image signature
+        run: |
+          cosign verify \
+            --certificate-identity-regexp "^https://github.com/David-Uka/sample-app/\.github/workflows/ci\.yml@refs/heads/main$" \
+            --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+            ghcr.io/david-uka/sample-app:${{ inputs.image_tag }}
+
   bump-overlay:
+    needs: verify-signature
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:
