@@ -39,6 +39,7 @@ jobs:
           image: ${{ env.IMAGE }}:sha-${{ steps.vars.outputs.short_sha }}
           fail-build: true
           severity-cutoff: high
+          only-fixed: true
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
