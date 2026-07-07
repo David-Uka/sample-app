@@ -85,7 +85,8 @@ jobs:
         run: |
           kustomize edit set image ghcr.io/david-uka/sample-app=ghcr.io/david-uka/sample-app:sha-${{ needs.build-scan-push.outputs.short_sha }}
 
-      - name: Commit and push
+      - name: Commit changes to branch
+        id: commit
         working-directory: gitops-manifests
         run: |
           git config user.name "sample-app-ci"
@@ -93,7 +94,26 @@ jobs:
           git add apps/sample-app/overlays/dev/kustomization.yaml
           if git diff --cached --quiet; then
             echo "no change"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
           else
+            branch="deploy/dev-sha-${{ needs.build-scan-push.outputs.short_sha }}"
+            git checkout -b "$branch"
             git commit -m "deploy(dev): sample-app sha-${{ needs.build-scan-push.outputs.short_sha }}"
-            git push
+            git push origin "$branch"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "branch=$branch" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Open and merge PR
+        if: steps.commit.outputs.changed == 'true'
+        working-directory: gitops-manifests
+        env:
+          GH_TOKEN: ${{ secrets.GITOPS_PAT }}
+        run: |
+          pr_url=$(gh pr create \
+            --repo David-Uka/gitops-manifests \
+            --base main \
+            --head "${{ steps.commit.outputs.branch }}" \
+            --title "deploy(dev): sample-app sha-${{ needs.build-scan-push.outputs.short_sha }}" \
+            --body "Automated dev image bump from sample-app CI run ${{ github.run_id }}.")
+          gh pr merge "$pr_url" --repo David-Uka/gitops-manifests --squash --delete-branch
