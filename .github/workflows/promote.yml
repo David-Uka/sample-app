@@ -61,11 +61,42 @@ jobs:
         run: |
           kustomize edit set image ghcr.io/david-uka/sample-app=ghcr.io/david-uka/sample-app:${{ inputs.image_tag }}
 
-      - name: Commit and push
+      - name: Commit changes to branch
+        id: commit
         working-directory: gitops-manifests
         run: |
           git config user.name "sample-app-ci"
           git config user.email "ci@sample-app"
           git add apps/sample-app/overlays/${{ inputs.environment }}/kustomization.yaml
-          git commit -m "deploy(${{ inputs.environment }}): sample-app ${{ inputs.image_tag }}"
-          git push
+          if git diff --cached --quiet; then
+            echo "no change"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            branch="deploy/${{ inputs.environment }}-${{ inputs.image_tag }}"
+            git checkout -b "$branch"
+            git commit -m "deploy(${{ inputs.environment }}): sample-app ${{ inputs.image_tag }}"
+            git push origin "$branch"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open PR for review
+        if: steps.commit.outputs.changed == 'true'
+        working-directory: gitops-manifests
+        env:
+          GH_TOKEN: ${{ secrets.GITOPS_PAT }}
+        run: |
+          pr_url=$(gh pr create \
+            --repo David-Uka/gitops-manifests \
+            --base main \
+            --head "${{ steps.commit.outputs.branch }}" \
+            --title "deploy(${{ inputs.environment }}): sample-app ${{ inputs.image_tag }}" \
+            --body "Promotion triggered by @${{ github.actor }} via promote.yml (run ${{ github.run_id }}).
+
+          Environment: **${{ inputs.environment }}**
+          Image tag: \`${{ inputs.image_tag }}\`
+
+          This PR requires manual review and merge — ${{ inputs.environment }} deploys are not auto-merged.")
+          echo "### Promotion PR opened :point_right: $pr_url" >> "$GITHUB_STEP_SUMMARY"
+          echo "Merge it manually to deploy to ${{ inputs.environment }}." >> "$GITHUB_STEP_SUMMARY"
+          echo "$pr_url"
